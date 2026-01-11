@@ -1,0 +1,57 @@
+version: "3.8"
+
+services:
+  postgres:
+    ports: []
+    environment:
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+
+  backend:
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_ORG:-your-org}/login-app-backend:${IMAGE_TAG:-latest}
+    build: null
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      APP_PORT: ${APP_PORT:-8080}
+      RUST_LOG: ${RUST_LOG:-info}
+      RUST_BACKTRACE: ${RUST_BACKTRACE:-0}
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+  frontend:
+    image: ${DOCKER_REGISTRY:-ghcr.io}/${DOCKER_ORG:-your-org}/login-app-frontend:${IMAGE_TAG:-latest}
+    build: null
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+
+  nginx:
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          cpus: "0.1"
+          memory: 64M

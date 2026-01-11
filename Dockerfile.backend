@@ -1,0 +1,72 @@
+
+ARG RUST_VERSION=1.70
+FROM rust:${RUST_VERSION}-slim as builder
+
+RUN apt-get update && \
+    apt-get install -y \
+    libpq-dev \
+    pkg-config \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY Backend/Cargo.toml Backend/Cargo.lock ./
+
+RUN mkdir -p src && \
+    echo "fn main() {}" > src/main.rs && \
+    cargo build --release && \
+    rm -rf src
+
+COPY Backend/src ./src
+COPY Backend/migrations ./migrations
+COPY Backend/diesel.toml ./
+
+RUN touch src/main.rs && \
+    cargo build --release
+
+RUN strip target/release/login-app-backend 2>/dev/null || true
+
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libpq5 \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r appuser && \
+    useradd -r -g appuser -u 1000 appuser && \
+    mkdir -p /app && \
+    chown -R appuser:appuser /app
+
+WORKDIR /app
+
+COPY --from=builder /app/target/release/login-app-backend /app/login-app-backend
+
+COPY --from=builder /app/migrations /app/migrations
+COPY --from=builder /app/diesel.toml /app/diesel.toml
+
+RUN chown -R appuser:appuser /app && \
+    chmod +x /app/login-app-backend
+
+USER appuser
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl --fail http://localhost:${APP_PORT:-8080}/ || exit 1
+
+LABEL maintainer="DevOps Team" \
+      version="0.1.0" \
+      description="Rust Actix-Web Backend for Login App" \
+      org.opencontainers.image.title="login-app-backend" \
+      org.opencontainers.image.version="0.1.0"
+
+ENV APP_PORT=8080 \
+    RUST_LOG=info
+
+CMD ["/app/login-app-backend"]
+

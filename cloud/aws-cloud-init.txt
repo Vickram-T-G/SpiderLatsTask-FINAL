@@ -1,0 +1,135 @@
+#cloud-config
+# ============================================================================
+# AWS EC2 Cloud-Init Configuration
+# ============================================================================
+# This script bootstraps an Ubuntu 22.04 EC2 instance for Login App deployment
+# Paste this content into EC2 Launch Instance → Advanced Details → User Data
+# ============================================================================
+
+# Update system packages
+package_update: true
+package_upgrade: true
+
+# Install required packages
+packages:
+  - curl
+  - git
+  - unzip
+  - jq
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+# Create deploy user with sudo privileges
+users:
+  - name: deploy
+    groups: sudo, docker
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    ssh_authorized_keys:
+      # Add your Jenkins SSH public key here
+      # Or leave empty and add manually after instance creation
+      # Example: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ... jenkins-deploy
+
+# Write files
+write_files:
+  # Docker daemon configuration
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
+    owner: root:root
+    permissions: '0644'
+
+# Run commands
+runcmd:
+  # Install Docker (official method)
+  - curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+  - sh /tmp/get-docker.sh
+  - usermod -aG docker deploy
+  - systemctl enable docker
+  - systemctl start docker
+
+  # Install Docker Compose (Compose V2 plugin)
+  - mkdir -p /usr/local/lib/docker/cli-plugins
+  - curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+  - chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+  - ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
+
+  # Create swap file (2GB) - Professional fix for t2.micro OOM issues
+  - |
+    if ! swapon --show | grep -q swapfile; then
+      echo "Creating 2GB swap file..."
+      fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+      chmod 600 /swapfile
+      mkswap /swapfile
+      swapon /swapfile
+      echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
+      echo "Swap created successfully"
+    else
+      echo "Swap already exists, skipping creation"
+    fi
+
+  # Create application directory
+  - mkdir -p /home/deploy/app
+  - chown -R deploy:deploy /home/deploy/app
+
+  # Create systemd service for docker-compose (optional - runs on boot)
+  - |
+    cat > /etc/systemd/system/login-app.service << 'EOF'
+    [Unit]
+    Description=Login App Docker Compose
+    Requires=docker.service
+    After=docker.service
+
+    [Service]
+    Type=oneshot
+    RemainAfterExit=yes
+    WorkingDirectory=/home/deploy/app
+    User=deploy
+    ExecStart=/usr/local/bin/docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+    ExecStop=/usr/local/bin/docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+    TimeoutStartSec=0
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+
+  # Enable but don't start the service (will start after first deployment)
+  - systemctl daemon-reload
+  - systemctl enable login-app.service || true
+
+  # Configure swapiness (optional optimization)
+  - sysctl vm.swappiness=10 || true
+  - echo 'vm.swappiness=10' | tee -a /etc/sysctl.conf
+
+  # Set timezone (optional)
+  - timedatectl set-timezone UTC
+
+  # Log completion
+  - echo "Cloud-init completed at $(date)" >> /var/log/cloud-init-complete.log
+  - echo "Docker version: $(docker --version)" >> /var/log/cloud-init-complete.log
+  - echo "Docker Compose version: $(docker compose version)" >> /var/log/cloud-init-complete.log
+  - echo "Swap status:" >> /var/log/cloud-init-complete.log
+  - swapon --show >> /var/log/cloud-init-complete.log
+
+# Final message
+final_message: |
+  Login App EC2 instance bootstrap completed!
+  - Docker installed: $(docker --version)
+  - Docker Compose installed: $(docker compose version)
+  - Swap created: $(swapon --show | grep swapfile || echo 'Not found')
+  - Deploy user created: deploy
+  - Application directory: /home/deploy/app
+  Next steps:
+  1. Add Jenkins SSH public key to ~deploy/.ssh/authorized_keys
+  2. Clone repository or let Jenkins deploy via SSH
+  3. Configure .env file with production values
+  4. Run deployment script
+
