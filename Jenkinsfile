@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKER_REGISTRY = 'ghcr.io'
-        DOCKER_ORG = 'your-org'
+        DOCKER_ORG = 'Vickram-T-G'
         
         GIT_COMMIT_SHORT = sh(
             script: 'git rev-parse --short HEAD',
@@ -13,7 +13,7 @@ pipeline {
         BACKEND_IMAGE = "${DOCKER_REGISTRY}/${DOCKER_ORG}/login-app-backend"
         FRONTEND_IMAGE = "${DOCKER_REGISTRY}/${DOCKER_ORG}/login-app-frontend"
         
-        DEPLOY_HOST = 'your-ec2-ip-or-hostname'
+        DEPLOY_HOST = 'hostname/ip'
         DEPLOY_USER = 'deploy'
         DEPLOY_PATH = '/home/deploy/app'
     }
@@ -347,4 +347,5 @@ pipeline {
         }
     }
 }
+
 
