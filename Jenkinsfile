@@ -25,7 +25,7 @@ pipeline {
         
         timestamps()
         
-        gitBuildInformation()
+        // gitBuildInformation()
     }
 
     stages {
