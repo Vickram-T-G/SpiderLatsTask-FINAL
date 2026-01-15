@@ -152,45 +152,78 @@ pipeline {
                     }
                 }
             }
-        }
-
-stage('Test Images') {
-    steps {
+        } 
+    stage('Test Images') {
+      steps {
         script {
             echo "Running smoke tests on built images..."
 
             sh '''
-                echo "Testing backend image..."
-                docker run --rm -d --name test-backend \
-                    ${BACKEND_IMAGE}:${GIT_COMMIT_SHORT}
+                set -euo pipefail
 
+                # create a network (no-op if exists)
+                docker network create ci_test_net 2>/dev/null || true
+
+                echo "Running backend (published randomly)..."
+                docker run -d --name test-backend --network ci_test_net -P ${BACKEND_IMAGE}:${GIT_COMMIT_SHORT}
+
+                # wait a bit for startup
                 sleep 10
 
-                if curl -f http://test-backend:8080 >/dev/null; then
-                    echo "✓ Backend health check passed"
-                else
-                    echo "✗ Backend health check failed"
+                # find host port mapped to container's 8080
+                BACKEND_HOST_PORT=$(docker port test-backend 8080 2>/dev/null | sed -n 's/.*://p' || true)
+                if [ -z "$BACKEND_HOST_PORT" ]; then
+                    echo "No host port mapped for backend (container may have exited). Showing container status and logs..."
+                    docker ps -a --filter "name=test-backend" --format 'Status: {{.Status}} ID: {{.ID}}'
                     docker logs test-backend || true
+                    docker rm -f test-backend 2>/dev/null || true
                     exit 1
                 fi
 
-                docker stop test-backend || true
+                echo "Backend mapped to host port: $BACKEND_HOST_PORT"
+                if curl -sSf --max-time 5 http://localhost:${BACKEND_HOST_PORT}/ >/dev/null; then
+                    echo "✓ Backend health check passed"
+                else
+                    echo "✗ Backend health check failed — printing logs"
+                    docker logs test-backend || true
+                    docker rm -f test-backend 2>/dev/null || true
+                    exit 1
+                fi
 
-                echo "Testing frontend image..."
-                docker run --rm -d --name test-frontend \
-                    ${FRONTEND_IMAGE}:${GIT_COMMIT_SHORT}
+                echo "Stopping and removing backend test container..."
+                docker rm -f test-backend 2>/dev/null || true
+
+                echo "Running frontend (published randomly)..."
+                docker run -d --name test-frontend --network ci_test_net -P ${FRONTEND_IMAGE}:${GIT_COMMIT_SHORT}
 
                 sleep 5
 
-                if curl -f http://test-frontend/health; then
-                    echo "✓ Frontend health check passed"
-                else
-                    echo "✗ Frontend health check failed"
+                FRONTEND_HOST_PORT=$(docker port test-frontend 80 2>/dev/null | sed -n 's/.*://p' || true)
+                if [ -z "$FRONTEND_HOST_PORT" ]; then
+                    echo "No host port mapped for frontend (container may have exited). Showing status and logs..."
+                    docker ps -a --filter "name=test-frontend" --format 'Status: {{.Status}} ID: {{.ID}}'
                     docker logs test-frontend || true
+                    docker rm -f test-frontend 2>/dev/null || true
                     exit 1
                 fi
 
-                docker stop test-frontend || true
+                echo "Frontend mapped to host port: $FRONTEND_HOST_PORT"
+                if curl -sSf --max-time 5 http://localhost:${FRONTEND_HOST_PORT}/health >/dev/null; then
+                    echo "✓ Frontend health check passed"
+                else
+                    echo "✗ Frontend health check failed — printing logs"
+                    docker logs test-frontend || true
+                    docker rm -f test-frontend 2>/dev/null || true
+                    exit 1
+                fi
+
+                echo "Stopping and removing frontend test container..."
+                docker rm -f test-frontend 2>/dev/null || true
+
+                # optionally remove the test network
+                docker network rm ci_test_net 2>/dev/null || true
+
+                echo "All smoke tests passed."
             '''
         }
     }
