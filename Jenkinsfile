@@ -58,12 +58,12 @@ pipeline {
                         docker run --rm -i hadolint/hadolint < Dockerfile.frontend || echo "Hadolint not available, skipping..."
                     '''
                     
-                    sh '''
-                        echo "Scanning Dockerfiles for vulnerabilities..."
-                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \\
-                            aquasec/trivy:latest image --exit-code 0 --severity HIGH,CRITICAL \\
-                            ${BACKEND_IMAGE}:${GIT_COMMIT_SHORT} || echo "Trivy scan completed with findings"
-                    '''
+                    // sh '''
+                    //     echo "Scanning Dockerfiles for vulnerabilities..."
+                    //     docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \\
+                    //         aquasec/trivy:latest image --exit-code 0 --severity HIGH,CRITICAL \\
+                    //         ${BACKEND_IMAGE}:${GIT_COMMIT_SHORT} || echo "Trivy scan completed with findings"
+                    // '''
                 }
             }
             post {
@@ -101,6 +101,23 @@ pipeline {
                             docker images | grep login-app-backend
                         '''
                     }
+                }
+            }
+        }
+        stage('Security Scan (Trivy)'){
+            steps{
+                script{
+                    echo "Running Trivy security scan on backend image..."
+
+                    sh '''
+                       docker run --rm \
+                          -v /var/run/docker.sock:/var/run/docker.sock \
+                          aquasec/trivy:latest image \
+                          --exit-code 0 \
+                          --severity HIGH,CRITICAL \
+                          ${BACKEND_IMAGE}:${GIT_COMMIT_SHORT} \
+                          || echo "Trivy scan completed with findings"
+            '''
                 }
             }
         }
