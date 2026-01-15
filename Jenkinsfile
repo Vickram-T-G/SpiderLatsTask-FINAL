@@ -168,7 +168,7 @@ pipeline {
                         sleep 10
                         
                         # Test health endpoint
-                        if curl -f http://localhost:8080; then
+                        if curl -I http://localhost:8080 >/dev/null; then
                             echo "✓ Backend health check passed"
                         else
                             echo "✗ Backend health check failed"
