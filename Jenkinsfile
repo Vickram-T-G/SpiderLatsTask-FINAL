@@ -179,12 +179,12 @@ pipeline {
                         
                         echo "Testing frontend image..."
                         docker run --rm -d --name test-frontend \\
-                            -p 8081:80 \\
+                            -p 8090:80 \\
                             ${FRONTEND_IMAGE}:${GIT_COMMIT_SHORT} || true
                         
                         sleep 5
                         
-                        if curl -f http://localhost:8081/health; then
+                        if curl -f http://localhost:8090/health; then
                             echo "✓ Frontend health check passed"
                         else
                             echo "✗ Frontend health check failed"
