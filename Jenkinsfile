@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKER_REGISTRY = 'ghcr.io'
-        DOCKER_ORG = 'Vickram-T-G'
+        DOCKER_ORG = 'vickram-t-g'
         
         GIT_COMMIT_SHORT = sh(
             script: 'git rev-parse --short HEAD',
