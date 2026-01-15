@@ -154,48 +154,91 @@ pipeline {
             }
         }
 
-        stage('Test Images') {
-            steps {
-                script {
-                    echo "Running smoke tests on built images..."
-                    
-                    sh '''
-                        echo "Testing backend image healthcheck..."
-                        docker run --rm -d --name test-backend \\
-                            -p 8080:8080 \\
-                            ${BACKEND_IMAGE}:${GIT_COMMIT_SHORT} || true
-                        
-                        sleep 10
-                        
-                        # Test health endpoint
-                        if curl -I http://localhost:8080 >/dev/null; then
-                            echo "✓ Backend health check passed"
-                        else
-                            echo "✗ Backend health check failed"
-                            exit 1
-                        fi
-                        
-                        docker stop test-backend || true
-                        
-                        echo "Testing frontend image..."
-                        docker run --rm -d --name test-frontend \\
-                            -p 8090:80 \\
-                            ${FRONTEND_IMAGE}:${GIT_COMMIT_SHORT} || true
-                        
-                        sleep 5
-                        
-                        if curl -f http://localhost:8090/health; then
-                            echo "✓ Frontend health check passed"
-                        else
-                            echo "✗ Frontend health check failed"
-                            exit 1
-                        fi
-                        
-                        docker stop test-frontend || true
-                    '''
-                }
-            }
+stage('Test Images') {
+    steps {
+        script {
+            echo "Running smoke tests on built images..."
+
+            sh '''
+                echo "Testing backend image..."
+                docker run --rm -d --name test-backend \
+                    ${BACKEND_IMAGE}:${GIT_COMMIT_SHORT}
+
+                sleep 10
+
+                if curl -f http://test-backend:8080 >/dev/null; then
+                    echo "✓ Backend health check passed"
+                else
+                    echo "✗ Backend health check failed"
+                    docker logs test-backend || true
+                    exit 1
+                fi
+
+                docker stop test-backend || true
+
+                echo "Testing frontend image..."
+                docker run --rm -d --name test-frontend \
+                    ${FRONTEND_IMAGE}:${GIT_COMMIT_SHORT}
+
+                sleep 5
+
+                if curl -f http://test-frontend/health; then
+                    echo "✓ Frontend health check passed"
+                else
+                    echo "✗ Frontend health check failed"
+                    docker logs test-frontend || true
+                    exit 1
+                fi
+
+                docker stop test-frontend || true
+            '''
         }
+    }
+}
+
+
+        // stage('Test Images') {
+        //     steps {
+        //         script {
+        //             echo "Running smoke tests on built images..."
+                    
+        //             sh '''
+        //                 echo "Testing backend image healthcheck..."
+        //                 docker run --rm -d --name test-backend \\
+        //                     -p 8080:8080 \\
+        //                     ${BACKEND_IMAGE}:${GIT_COMMIT_SHORT} || true
+                        
+        //                 sleep 10
+                        
+        //                 # Test health endpoint
+        //                 if curl -I http://localhost:8080 >/dev/null; then
+        //                     echo "✓ Backend health check passed"
+        //                 else
+        //                     echo "✗ Backend health check failed"
+        //                     exit 1
+        //                 fi
+                        
+        //                 docker stop test-backend || true
+                        
+        //                 echo "Testing frontend image..."
+        //                 docker run --rm -d --name test-frontend \\
+        //                     -p 8090:80 \\
+        //                     ${FRONTEND_IMAGE}:${GIT_COMMIT_SHORT} || true
+                        
+        //                 sleep 5
+                        
+        //                 if curl -f http://localhost:8090/health; then
+        //                     echo "✓ Frontend health check passed"
+        //                 else
+        //                     echo "✗ Frontend health check failed"
+        //                     exit 1
+        //                 fi
+                        
+        //                 docker stop test-frontend || true
+        //             '''
+        //         }
+        //     }
+        // }
 
         stage('Push Images to Registry') {
             steps {
