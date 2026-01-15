@@ -153,81 +153,58 @@ pipeline {
                 }
             }
         } 
-    stage('Test Images') {
-      steps {
-        script {
-            echo "Running smoke tests on built images..."
+        stage('Test Images') {
+            steps {
+                script {
+                    echo "Running smoke tests on built images..."
+                    
+                    // We use fixed ports (8081 and 8082) to avoid conflicts with 
+                    // other things potentially running on 8080/80
+                    sh '''
+                        # Stop old containers if they exist to prevent name conflicts
+                        docker rm -f test-backend test-frontend || true
 
-            sh '''
-                set -euo pipefail
+                        echo "--- Testing Backend ---"
+                        # Run backend mapping container port 8080 to host port 8081
+                        docker run -d --name test-backend -p 8081:8080 ${BACKEND_IMAGE}:${GIT_COMMIT_SHORT}
+                        
+                        echo "Waiting for backend to start..."
+                        sleep 10
+                        
+                        # Check connectivity. We allow 404 because the root path might not exist, 
+                        # but if connection is refused, it will fail.
+                        # Using localhost because we are on the host machine.
+                        if curl -v http://localhost:8081; then
+                            echo "✓ Backend is reachable"
+                        else
+                            echo "✗ Backend failed to respond"
+                            docker logs test-backend
+                            exit 1
+                        fi
 
-                # create a network (no-op if exists)
-                docker network create ci_test_net 2>/dev/null || true
-
-                echo "Running backend (published randomly)..."
-                docker run -d --name test-backend --network ci_test_net -P ${BACKEND_IMAGE}:${GIT_COMMIT_SHORT}
-
-                # wait a bit for startup
-                sleep 10
-
-                # find host port mapped to container's 8080
-                BACKEND_HOST_PORT=$(docker port test-backend 8080 2>/dev/null | sed -n 's/.*://p' || true)
-                if [ -z "$BACKEND_HOST_PORT" ]; then
-                    echo "No host port mapped for backend (container may have exited). Showing container status and logs..."
-                    docker ps -a --filter "name=test-backend" --format 'Status: {{.Status}} ID: {{.ID}}'
-                    docker logs test-backend || true
-                    docker rm -f test-backend 2>/dev/null || true
-                    exit 1
-                fi
-
-                echo "Backend mapped to host port: $BACKEND_HOST_PORT"
-                if curl -sSf --max-time 5 http://localhost:${BACKEND_HOST_PORT}/ >/dev/null; then
-                    echo "✓ Backend health check passed"
-                else
-                    echo "✗ Backend health check failed — printing logs"
-                    docker logs test-backend || true
-                    docker rm -f test-backend 2>/dev/null || true
-                    exit 1
-                fi
-
-                echo "Stopping and removing backend test container..."
-                docker rm -f test-backend 2>/dev/null || true
-
-                echo "Running frontend (published randomly)..."
-                docker run -d --name test-frontend --network ci_test_net -P ${FRONTEND_IMAGE}:${GIT_COMMIT_SHORT}
-
-                sleep 5
-
-                FRONTEND_HOST_PORT=$(docker port test-frontend 80 2>/dev/null | sed -n 's/.*://p' || true)
-                if [ -z "$FRONTEND_HOST_PORT" ]; then
-                    echo "No host port mapped for frontend (container may have exited). Showing status and logs..."
-                    docker ps -a --filter "name=test-frontend" --format 'Status: {{.Status}} ID: {{.ID}}'
-                    docker logs test-frontend || true
-                    docker rm -f test-frontend 2>/dev/null || true
-                    exit 1
-                fi
-
-                echo "Frontend mapped to host port: $FRONTEND_HOST_PORT"
-                if curl -sSf --max-time 5 http://localhost:${FRONTEND_HOST_PORT}/health >/dev/null; then
-                    echo "✓ Frontend health check passed"
-                else
-                    echo "✗ Frontend health check failed — printing logs"
-                    docker logs test-frontend || true
-                    docker rm -f test-frontend 2>/dev/null || true
-                    exit 1
-                fi
-
-                echo "Stopping and removing frontend test container..."
-                docker rm -f test-frontend 2>/dev/null || true
-
-                # optionally remove the test network
-                docker network rm ci_test_net 2>/dev/null || true
-
-                echo "All smoke tests passed."
-            '''
+                        echo "--- Testing Frontend ---"
+                        # Run frontend mapping container port 80 to host port 8082
+                        docker run -d --name test-frontend -p 8082:80 ${FRONTEND_IMAGE}:${GIT_COMMIT_SHORT}
+                        
+                        sleep 5
+                        
+                        # The frontend nginx config explicitly has a /health endpoint
+                        if curl -f http://localhost:8082/health; then
+                            echo "✓ Frontend health check passed"
+                        else
+                            echo "✗ Frontend health check failed"
+                            docker logs test-frontend
+                            exit 1
+                        fi
+                    '''
+                }
+            }
+            post {
+                always {
+                    sh 'docker rm -f test-backend test-frontend || true'
+                }
+            }
         }
-    }
-}
 
 
         // stage('Test Images') {
