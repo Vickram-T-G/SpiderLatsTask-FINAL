@@ -13,9 +13,9 @@ pipeline {
         BACKEND_IMAGE = "${DOCKER_REGISTRY}/${DOCKER_ORG}/login-app-backend"
         FRONTEND_IMAGE = "${DOCKER_REGISTRY}/${DOCKER_ORG}/login-app-frontend"
         
-        DEPLOY_HOST = 'hostname/ip'
-        DEPLOY_USER = 'deploy'
-        DEPLOY_PATH = '/home/deploy/app'
+        DEPLOY_HOST = '13.60.167.169'
+        DEPLOY_USER = 'ec2-user'
+        DEPLOY_PATH = '/home/ec2-user/app'
     }
 
     options {
